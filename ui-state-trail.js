@@ -27,66 +27,100 @@ SOFTWARE.
  * Performs binary search on a sorted array of numbers.
  * @param {number} x - The element to search for.
  * @param {number[]} xi - The sorted array of numbers to search.
- * @returns {number} - The index of the smallest element in xi where x is greater or equal to.
+ * @returns {number} - The index of the largest element in xi where x is greater or equal to.
  */
 function binarySearch(x, xi) {
-	let left = 0;
-	let right = xi.length - 1;
-
-	while (left <= right) {
-		let mid = Math.floor((left + right) / 2);
-		if (xi[mid] >= x) {
-		right = mid - 1;
+	let i_left = 0;
+	let i_right = xi.length - 1;
+	let i = Math.trunc((i_right-i_left)/2)
+	
+	
+	while (i_right - i_left > 1) {
+		if ( x < xi[i] ) {
+			i_right = i;
 		} else {
-		left = mid + 1;
+			i_left = i;
 		}
+
+		// Find central element in index interval [i_left, i_right] by shifting
+		// right (integer division by 2)
+		i = Math.trunc((i_left + i_right) / 2);
 	}
 
-	return Math.max(right,0);
+	return i_left;
+}
+
+function saturate(lb, x, ub) {
+	return Math.min(ub, Math.max(lb, x));
+}
+
+function nearest_index(x, xi) {
+	return binarySearch( x, xi );
 }
 
 function nearest_index_ed(x, xi) {
 
 	let step = xi[1] - xi[0];
 
-	return Math.floor((x - xi[0]) / step);
+	return Math.trunc( saturate(0, (x - xi[0]) / step, xi.length-2) );
 }
   
     
 const INTERP_EXTRAP_CLAMP = 0;
-const INTERP_EXTRAP_LINEAR = 0;
+const INTERP_EXTRAP_LINEAR = 1;
 const INTERP_TYPE_LINEAR = 0;
 const INTERP_TYPE_STEP_AFTER = 1;
 const INTERP_TYPE_STEP_BEFORE = 2;
 const INTERP_TYPE_NEAREST_NEIGHBOR = 3;
 
-function range1( id, x, xi, extrap ) {
-	let r = (x - xi[id]) / (xi[id+1] - xi[id]);
+/**
+ * Finds the index i in a sorted array of elements xi where xi[i] is the largest element that is
+ * smaller or equal than x.
+ * It uses binary search if equidistant is false, a faster method otherwise.
+ * @param {number} x - The element to search for.
+ * @param {number[]} xi - The sorted array of numbers to search.
+ * @param {boolean} equidistant - Set to true if x_i is equidistant, i.e. the step between all elements is the same.
+ * @returns {number} - The index of the largest element in xi where x is greater or equal to.
+ */
+function prelookup1( x, xi, equidistant )
+{
+	let	id;
+	let step;
 
-	switch( extrap ) {
-		case INTERP_EXTRAP_CLAMP:
-			r = Math.max(0, Math.min(1, r));
-			break;
-		case INTERP_EXTRAP_LINEAR:
-		default:
-			break;
+	if( equidistant === undefined ) equidistant = false;
+
+	if( xi.length == 1 )
+	{
+		id = 0;
+		step = Math.sign(x - xi[0])/2;
+	}
+	else if( x < xi[0] )
+	{
+		id		= 0;
+		step	= ( x - xi[0] ) / ( xi[1] - xi[0] );
+	}
+	else if( x < xi[xi.length - 2] )
+	{
+		// Find interval
+		if( equidistant )
+			id = nearest_index_ed( x, xi );
+		else
+			id = nearest_index( x, xi );
+
+		// Calculate normalized linear interpolation step
+		step = ( x - xi[id] ) / ( xi[id + 1] - xi[id] );
+	} 
+	else
+	{
+		id		= xi.length - 2;
+		step = ( x - xi[id] ) / ( xi[id + 1] - xi[id] );
 	}
 
-	return r;
+	return [ id, step ];
 }
 
-function binarySearchRange1(x, xi) {
-	let id = binarySearch(x, xi);
-	let r = range1(id, x, xi, INTERP_EXTRAP_LINEAR);
-
-	return [id, r];
-}
-
-function linterp1( id, x, xi, yi, extrap ) {
-
-	let r = range1( id, x, xi, extrap);
-
-	return yi[id] + r * (yi[id+1] - yi[id]);
+function linterp1( id, yi, step ) {
+	return yi[id] + step * (yi[id+1] - yi[id]);
 }
 
 function interp1(x,xi,yi,type,extrap,equidistant) {
@@ -94,17 +128,30 @@ function interp1(x,xi,yi,type,extrap,equidistant) {
 	if( extrap === undefined ) extrap = INTERP_EXTRAP_CLAMP;
 	if( equidistant === undefined ) equidistant = false;
 
-	let id = equidistant ? nearest_index_ed(x,xi) : binarySearch(x,xi);
+	if( xi.length == 1 ) return xi[0];
+
+	let [id, r] = prelookup1(x,xi,equidistant);
 
 	switch( type ) {
 		case INTERP_TYPE_LINEAR:
-			return linterp1( id, x, xi, yi, extrap );
+			
+			// Check what extrapolation type was chosen
+			switch(extrap) {
+				case INTERP_EXTRAP_CLAMP:
+					r = saturate(0,r,1);
+					break;
+				case INTERP_EXTRAP_LINEAR:
+				default:
+					break;
+			}
+
+			return linterp1( id, yi, r );
 		case INTERP_TYPE_STEP_AFTER:
 			return yi[id];
 		case INTERP_TYPE_STEP_BEFORE:
 			return yi[Math.min(yi.length-1, id+1)];
 		case INTERP_TYPE_NEAREST_NEIGHBOR:
-			let idr = id + Math.round(range1( id, x, xi, INTERP_EXTRAP_CLAMP ));
+			let idr = saturate( 0, Math.round(id + r), xi.length-1);
 			return yi[idr];
 	}
 }
@@ -143,7 +190,7 @@ function insertIntoTimeRange(newPoint, dataPoints, currentTime, config) {
 		dataPoints = dataPoints.filter( x => x.timestamp != newPoint.timestamp);
 
 		// Find where to place it
-		let [ id, r ] = binarySearchRange1(newPoint.timestamp, dataPoints.map( x => x.timestamp) );
+		let [ id, r ] = prelookup1(newPoint.timestamp, dataPoints.map( x => x.timestamp), false );
 		let insert_id = Math.min(0, Math.max(dataPoints.length), id + Math.ceil(r));
 
 		//if( dataPoints.timestamp < leastAcceptableTime && )
@@ -407,20 +454,42 @@ module.exports = function (RED) {
 
 
 				addToStore = function (s) {
+					if( config.useCurrentTimeRef && s.timestamp > currentTime )
+						return;
+
 					s.timeStr = new Date(s.timestamp).toLocaleString("de-DE");
 					if (storage.length > 0) {
-						var temp = [...storage]
-						temp = temp.filter(el => el.timestamp != s.timestamp)
-						temp.push(s)
-						temp = temp.sort((a, b) => a.timestamp - b.timestamp)
+
+						let [id, r] = prelookup1(s.timestamp, storage.map( x => x.timestamp), false );
 						
-						// Drop states that did not change
-							var idx = temp.length - 1
-							if (idx > 2) {
-								if (temp[idx - 2].state === temp[idx - 1].state) {
-									temp.splice(idx - 1, 1)
-								}
-							}
+						// Calculate preceding element index
+						idp = Math.trunc(id + saturate(0,r,1));
+
+						// Drop state if it does not change the view (i.e. state stays the same)
+						if( r > 0 && s.state === storage[idp].state ) return;
+
+						// Insert element in the right position, overwriting element with same timestamp
+						r = saturate(0,r,2);
+						let idxi = Math.min(storage.length, Math.ceil(r+id));
+						let temp = [...storage];
+						temp.splice(idxi,r==0 ? 1 : 0,s);
+
+						//var temp = [...storage]
+						//temp = temp.filter(el => el.timestamp != s.timestamp)
+						//temp.push(s)
+						//temp = temp.sort((a, b) => a.timestamp - b.timestamp)
+						
+						// Get index of inserted element
+						//let idxi = temp.findIndex( x => x.timestamp == s.timestamp );
+
+						// Drop state if it did not change. otherwise check following state if it can be dropped
+						if( idxi > 0 && temp[idxi-1].state === s.state) {
+							temp.splice(idxi,1);
+						}
+						else if( idxi < temp.length - 1 && temp[idxi+1].state == s.state ) {
+							temp.splice(idxi+1,1);
+						}
+
 						
 						let leastAcceptableTime = (config.useCurrentTimeRef ? currentTime : temp[temp.length - 1].timestamp) - config.period;
 						//temp = temp.filter(el => el.timestamp > time);
@@ -439,7 +508,6 @@ module.exports = function (RED) {
 						storage = temp
 					} else {
 						storage.push(s);
-
 					}
 
 					config.min = storage[0].timestamp
@@ -621,7 +689,7 @@ module.exports = function (RED) {
 
 					let interpPosition = (timestamp) => {
 						return interp1(timestamp, [startTime, endTime], [0, 100], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false);
-						}
+					}
 
 					// Create blank rectangle from beginning of horizon to first data point
 					if( dataPoints[0].timestamp > startTime ) {
