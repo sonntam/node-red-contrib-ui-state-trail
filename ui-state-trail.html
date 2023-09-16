@@ -83,12 +83,6 @@ SOFTWARE.
             style="display:inline-block; width:auto; vertical-align:baseline; 
             margin-right:5px;margin-left:5px;">Use persistable storage if available
 </div>
-<div class='form-row' id='node-input-performance'>
-    <label for='node-input-combine'><i class='icon-tag'></i> Performance</label>
-    <input type="checkbox" checked id="node-input-combine" 
-            style="display:inline-block; width:auto; vertical-align:baseline; 
-            margin-right:5px;margin-left:5px;">Combine similar states
-</div>
 <div class='form-row' id='node-input-bl-label'>
     <label for='node-input-blanklabel'><i class='icon-tag'></i> Blank label</label>
     <input type='text' id='node-input-blanklabel' placeholder='Waiting data'>
@@ -153,7 +147,6 @@ SOFTWARE.
                 validate: RED.validators.number(),
                 required: true
             },
-            combine: {val: true, required: true},
             blanklabel: {value: ''}
         },
         inputs: 1,
@@ -217,11 +210,6 @@ SOFTWARE.
 
             if (this.persist === undefined) {
                 $("#node-input-persist").prop('checked', false);
-            }
-
-
-            if (this.combine === undefined) {
-                $("#node-input-keepall").prop('checked', true);
             }
 
             var oval = $("#node-input-timeformat").val();
@@ -488,14 +476,7 @@ SOFTWARE.
         Legend can be configured for 3 modes. It even shows information for all the configured states or for states currently in timeline or only for latest state.        
     <p>    By clicking the legend on dashboard, you can toggle between names and summary. Summary shows aggregated time or percentage for each state.
 
-    <h2>Combine similar states</h2>
-    <p>By default, the node combines consecutive states if they have same value. You could turn this behavior off, if you wanted to present your data as it was provided. 
-        Doing so, the consecutive similar states will be splitted with thin lines, and all those states will be individually clickable.
-        If splitting the consecutive similar states is not intentional or if you don't use click option, it is recommended to keep this option selected. 
-        For large amounts of data, combining the states helps to gain performance.
-
-</br>
-</br>
+<br />
     <h3>Input</h3>
     <dl class="message-properties">
         <dt>payload

@@ -1,7 +1,7 @@
 {
-    "name": "node-red-contrib-ui-state-trail",
-    "version": "1.0.2",
-    "description": "A Node-RED dashboard ui node. Trail of state changes over time",
+    "name": "node-red-contrib-ui-state-trail-mod",
+    "version": "1.0.0",
+    "description": "A Node-RED dashboard ui node. Trail of state changes over time. Forked from node-red-contrib-ui-state-trail.",
     "main": "ui-state-trail.js",
     "node-red": {
         "nodes": {
@@ -16,11 +16,15 @@
     ],
     "repository": {
         "type": "git",
-        "url": "https://github.com/hotNipi/node-red-contrib-ui-state-trail.git"
+        "url": "https://github.com/sonntam/node-red-contrib-ui-state-trail.git"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "author": "hotNipi <nipnippel@gmail.com>",
+    "contributors": [
+        "Marcus Sonntag (https://github.com/sonntam/)"
+    ],
+
     "license": "MIT"
 }
