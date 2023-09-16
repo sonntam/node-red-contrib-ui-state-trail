@@ -23,6 +23,141 @@ SOFTWARE.
 */
 
 
+/**
+ * Performs binary search on a sorted array of numbers.
+ * @param {number} x - The element to search for.
+ * @param {number[]} xi - The sorted array of numbers to search.
+ * @returns {number} - The index of the smallest element in xi where x is greater or equal to.
+ */
+function binarySearch(x, xi) {
+	let left = 0;
+	let right = xi.length - 1;
+
+	while (left <= right) {
+		let mid = Math.floor((left + right) / 2);
+		if (xi[mid] >= x) {
+		right = mid - 1;
+		} else {
+		left = mid + 1;
+		}
+	}
+
+	return Math.max(right,0);
+}
+
+function nearest_index_ed(x, xi) {
+
+	let step = xi[1] - xi[0];
+
+	return Math.floor((x - xi[0]) / step);
+}
+  
+    
+const INTERP_EXTRAP_CLAMP = 0;
+const INTERP_EXTRAP_LINEAR = 0;
+const INTERP_TYPE_LINEAR = 0;
+const INTERP_TYPE_STEP_AFTER = 1;
+const INTERP_TYPE_STEP_BEFORE = 2;
+const INTERP_TYPE_NEAREST_NEIGHBOR = 3;
+
+function range1( id, x, xi, extrap ) {
+	let r = (x - xi[id]) / (xi[id+1] - xi[id]);
+
+	switch( extrap ) {
+		case INTERP_EXTRAP_CLAMP:
+			r = Math.max(0, Math.min(1, r));
+			break;
+		case INTERP_EXTRAP_LINEAR:
+		default:
+			break;
+	}
+
+	return r;
+}
+
+function binarySearchRange1(x, xi) {
+	let id = binarySearch(x, xi);
+	let r = range1(id, x, xi, INTERP_EXTRAP_LINEAR);
+
+	return [id, r];
+}
+
+function linterp1( id, x, xi, yi, extrap ) {
+
+	let r = range1( id, x, xi, extrap);
+
+	return yi[id] + r * (yi[id+1] - yi[id]);
+}
+
+function interp1(x,xi,yi,type,extrap,equidistant) {
+	if( type === undefined ) type = INTERP_TYPE_LINEAR;
+	if( extrap === undefined ) extrap = INTERP_EXTRAP_CLAMP;
+	if( equidistant === undefined ) equidistant = false;
+
+	let id = equidistant ? nearest_index_ed(x,xi) : binarySearch(x,xi);
+
+	switch( type ) {
+		case INTERP_TYPE_LINEAR:
+			return linterp1( id, x, xi, yi, extrap );
+		case INTERP_TYPE_STEP_AFTER:
+			return yi[id];
+		case INTERP_TYPE_STEP_BEFORE:
+			return yi[Math.min(yi.length-1, id+1)];
+		case INTERP_TYPE_NEAREST_NEIGHBOR:
+			let idr = id + Math.round(range1( id, x, xi, INTERP_EXTRAP_CLAMP ));
+			return yi[idr];
+	}
+}
+
+// Function to calculate the extension after the last data timestamp to fill the bar
+function configGetTimeExtension(config) {
+	switch( config.extendLastStateType ) {
+		case "percent":
+
+			break;
+		case "milliseconds":
+		default:
+			break;
+	}
+}
+
+function insertIntoTimeRange(newPoint, dataPoints, currentTime, config) {
+	let leastAcceptableTime;
+	
+	// Get least acceptable time
+	if(config.useCurrentTimeRef) leastAcceptableTime = currentTime - config.period;
+	else {
+		if( dataPoints.length > 0 ) 
+			leastAcceptableTime = dataPoints.at(-1).timestamp - config.period;
+		else 
+			leastAcceptableTime = newPoint.timestamp;
+	}
+
+	if( dataPoints.length == 0 ) {
+		// Insert initial point
+		dataPoints.push( newPoint );
+	} else {
+		// Insert concurrent point
+
+		// Delete existing point
+		dataPoints = dataPoints.filter( x => x.timestamp != newPoint.timestamp);
+
+		// Find where to place it
+		let [ id, r ] = binarySearchRange1(newPoint.timestamp, dataPoints.map( x => x.timestamp) );
+		let insert_id = Math.min(0, Math.max(dataPoints.length), id + Math.ceil(r));
+
+		//if( dataPoints.timestamp < leastAcceptableTime && )
+
+		if( newPoint.timestamp < leastAcceptableTime && dataPoints[0].timestamp > leastAcceptableTime && newPoint.state != dataPoints[0].state ) {
+			newPoint.timestamp = Math.max(leastAcceptableTime, newPoint.timestamp);
+			dataPoints.splice(0,0,newPoint);
+		}
+	}
+	
+	
+	return dataPoints;
+}
+
 module.exports = function (RED) {
 	function HTML(config) {
 		var data = JSON.stringify(config.initial);
@@ -122,6 +257,7 @@ module.exports = function (RED) {
 			var isValidStateConf = null;
 			var dots = [];
 			var ctx = node.context()
+			var currentTime = Date.now();
 
 			if (checkConfig(node, config)) {
 				checkPayload = function (input) {
@@ -271,25 +407,41 @@ module.exports = function (RED) {
 
 
 				addToStore = function (s) {
+					s.timeStr = new Date(s.timestamp).toLocaleString("de-DE");
 					if (storage.length > 0) {
 						var temp = [...storage]
 						temp = temp.filter(el => el.timestamp != s.timestamp)
 						temp.push(s)
 						temp = temp.sort((a, b) => a.timestamp - b.timestamp)
-						if (config.combine) {
+						
+						// Drop states that did not change
 							var idx = temp.length - 1
 							if (idx > 2) {
 								if (temp[idx - 2].state === temp[idx - 1].state) {
 									temp.splice(idx - 1, 1)
 								}
 							}
+						
+						let leastAcceptableTime = (config.useCurrentTimeRef ? currentTime : temp[temp.length - 1].timestamp) - config.period;
+						//temp = temp.filter(el => el.timestamp > time);
+						// Find first element that is within range of time domain
+						let idxs = temp.findIndex( el => el.timestamp > leastAcceptableTime);
+
+						// If feasible, set the element before that to start of domain to keep track of its value
+						if( idxs > 1 ) {
+							temp[idxs-1].timestamp = leastAcceptableTime;
+							temp[idxs-1].timeStr = new Date(leastAcceptableTime).toLocaleString("de-DE");
+						
+							// Throw everyting else away
+							temp = temp.slice(idxs-1);
 						}
-						var time = temp[temp.length - 1].timestamp - config.period
-						temp = temp.filter(el => el.timestamp > time);
+
 						storage = temp
 					} else {
-						storage.push(s)
+						storage.push(s);
+
 					}
+
 					config.min = storage[0].timestamp
 					config.insidemin = config.min
 					if (storage.length > 2) {
@@ -452,36 +604,74 @@ module.exports = function (RED) {
 
 				generateGradient = function () {
 					var ret = []
-					splitters = []
 					if (storage.length < 2) {
 						return ret
 					}
-					var o = {p: 0, c: getColor(storage[0].state)}
-					ret.push(o)
-					o = {p: config.stripe.left,	c: getColor(storage[0].state)}
-					ret.push(o)
-					var i
-					var po
-					po = getPosition(storage[1].timestamp, config.insidemin, config.max)
-					for (i = 1; i < storage.length - 1; i++) {
-						if (isNaN(po)) {
-							continue
+
+					// StartTimestamp
+					let lastTimeInStore = storage.at(-1).timestamp;
+					let endTime = (config.useCurrentTimeRef ? currentTime : lastTimeInStore + config.extendLastStateValue );
+					let startTime = endTime - config.period;
+
+					// Get colors
+					let dataPoints = storage.map( x => {
+						x.color = getColor(x.state);
+						return x;
+					});
+
+					let interpPosition = (timestamp) => {
+						return interp1(timestamp, [startTime, endTime], [0, 100], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false);
 						}
-						o = {p: po,	c: getColor(storage[i - 1].state)}
-						ret.push(o)
-						o = {p: po,	c: getColor(storage[i].state)}
-						ret.push(o)
-						po = getPosition(storage[i + 1].timestamp, config.insidemin, config.max)
+
+					// Create blank rectangle from beginning of horizon to first data point
+					if( dataPoints[0].timestamp > startTime ) {
+						ret.push({
+							p: 0,
+							c: getColor("undefined")
+						});
+
+						ret.push({
+							p: interpPosition(dataPoints[0].timestamp),
+							c: getColor("undefined")
+						})
 					}
-					o = {p: config.stripe.right,c: getColor(storage[storage.length - 2].state)}
-					ret.push(o)
-					o = {p: config.stripe.right,c: getColor(storage[storage.length - 1].state)}
-					ret.push(o)
-					o = {p: 100,c: getColor(storage[storage.length - 1].state)}
-					ret.push(o)
-					if (!config.combine) {
-						findSplitters()
+
+					// Handle all points excluding last one
+					for( i = 0; i < dataPoints.length - 1; i++ ) {
+						let curPoint = dataPoints[i];
+						let nextPoint = dataPoints[i+1];
+
+						if( curPoint.timestamp > endTime ) break;
+
+						ret.push({
+							p: interpPosition(curPoint.timestamp),
+							c: curPoint.color
+						});
+
+						ret.push({
+							p: interpPosition(nextPoint.timestamp),
+							c: curPoint.color
+						});
 					}
+
+					// Handle last point
+					{
+						let lastPoint = dataPoints.at(-1);
+
+						if( lastPoint.timestamp <= endTime ) 
+						{
+							ret.push({
+								p: interpPosition(dataPoints.at(-1).timestamp),
+								c: dataPoints.at(-1).color
+							});
+
+							ret.push({
+								p: 100,
+								c: dataPoints.at(-1).color
+							});
+						}
+					}
+
 					findDots()
 					return ret
 				}
@@ -527,14 +717,23 @@ module.exports = function (RED) {
 					if (storage.length < 2) {
 						return ret
 					}
+					let endTime = (config.useCurrentTimeRef ? currentTime : storage.at(-1).timestamp + config.extendLastStateValue );
+					let startTime = endTime - config.period;
+
+					let interpPosition = (timestamp) => {
+						return interp1(timestamp, [startTime, endTime], [0, 100], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false);
+					}
+
 					var o
 					var po
 					var t
 					var vis
 					if (config.exactticks){
 						for (let i = 0; i < storage.length; i++) {
-							t = storage[i].timestamp						
-							po = i == 0 ? 0 : getPosition(t, config.insidemin, config.max)
+							// Check if it starts exactly from the beginning. If so drop from ticks
+							//if( i == 0 && storage[i].timestamp == startTime ) continue;
+							t = storage[i].timestamp;
+							po = interpPosition(t);
 							o = {
 								x: po,
 								v: formatTime(t),
@@ -695,6 +894,10 @@ module.exports = function (RED) {
 				config.height = parseInt(config.height)
 				config.exactwidth = parseInt(site.sizes.sx * config.width + site.sizes.cx * (config.width - 1)) - 12;
 				config.exactheight = parseInt(site.sizes.sy * config.height + site.sizes.cy * (config.height - 1)) - 12;
+				
+				//config.useCurrentTimeRef = false;
+				config.extendLastStateValue = 30*60*1000;
+				config.extendLastStateType = "milliseconds"; // "percent" or "milliseconds"
 
 				var sh = (site.sizes.sy / 2) + (site.sizes.cy * (config.height - 1)) - 6
 				 if (config.height > 2){
@@ -787,7 +990,11 @@ module.exports = function (RED) {
 							return {}
 						}
 						var reference = checkReference(msg.reference,validated)
+						
+						currentTime = Date.now();
+
 						store(validated,reference)
+						
 						msg.payload = {
 							stops: generateGradient(),
 							ticks: generateTicks(),
