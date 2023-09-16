@@ -38,6 +38,11 @@ SOFTWARE.
     <label for='node-input-label'><i class='icon-tag'></i> Label</label>
     <input type='text' id='node-input-label' placeholder='State trail'>
 </div>    
+<div class="form-row" id="current-time-ref-show">
+    <label for="node-input-useCurrentTimeRef">End of Period</label>    
+    <input type="checkbox" id="node-input-useCurrentTimeRef" style="display:inline-block; width:auto; vertical-align: baseline; margin-right: 5px; margin-left: 5px;">
+    The shown time period stops at the current time
+</div>
 <div class="form-row" id="period-show">
     <label for="node-input-periodLimit">Period</label>    
     <input type="text" id="node-input-periodLimit" style="width:60px;">
@@ -132,6 +137,7 @@ SOFTWARE.
                     return v.length == unique.size && v.length > 1;               
                 }
             },
+            useCurrentTimeRef: { val: false, required: true },
             periodLimit: {
                 value: 1,
                 validate: RED.validators.number(),
@@ -187,6 +193,9 @@ SOFTWARE.
                 group: '#node-input-group'
             });
             
+            if (this.useCurrentTimeRef === undefined) {
+                $('#node-input-useCurrentTimeRef').prop('checked', false);
+            }
 
             if (this.tickmarks === undefined) {
                 this.tickmarks = 4;

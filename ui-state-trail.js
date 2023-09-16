@@ -40,16 +40,6 @@ module.exports = function (RED) {
 			.statra-{{unique}}.legend{
 				cursor:pointer;
 			}
-			.statra-{{unique}}.split{
-				position:absolute;
-				width:${config.exactwidth}px;
-				top:${config.stripe.y}%;
-			}
-			.statra-{{unique}}.split .splitter{
-				position:absolute;				
-				height:${config.stripe.height}px;
-				border-left:1px solid ${config.bgrColor};
-			}
 			.statra-gradi-{{unique}}{
 				width:${config.exactwidth}px;
 				height:${config.stripe.height}px;
@@ -74,14 +64,11 @@ module.exports = function (RED) {
 					<tspan id="statra_blank_{{unique}}" class="txt-{{unique}}" text-anchor="middle" dominant-baseline="hanging" 
 						x=` + config.exactwidth / 2 + ` y="` + config.stripe.y + `%">` + config.blanklabel + `</tspan>
 				</text>				
-				<g class="statra-{{unique}} split" id="statra_dots_{{unique}}" 
-					style="outline: none; border: 0;"></g>
 				<g class="statra-{{unique}} ticks" id="statra_ticks_{{unique}}" 
 					style="outline: none; border: 0;"></g>								
 			</svg>
 
-			<div class="statra-gradi-{{unique}}" id=statra_gradi_{{unique}} ng-click='onClick($event)'></div>
-			<div class="statra-{{unique}} split" id="statra_splitters_{{unique}}" ng-if="${!config.combine}"></div>`
+			<div class="statra-gradi-{{unique}}" id=statra_gradi_{{unique}} ng-click='onClick($event)'></div>`
 		
 		return String.raw`${styles}${layout}`;
 	}
@@ -131,10 +118,8 @@ module.exports = function (RED) {
 			var generateOutMessage = null;
 			var addToStore = null;
 			var addToRef = null;
-			var findSplitters = null;
 			var findDots = null;
 			var isValidStateConf = null;
-			var splitters = [];
 			var dots = [];
 			var ctx = node.context()
 
@@ -261,35 +246,6 @@ module.exports = function (RED) {
 					]
 					node.warn('Configuration for states is not valid! ' + err[e])
 					return false
-				}
-
-				findSplitters = function () {
-					function checkSpilt(el, idx, arr) {
-						if (idx > 0) {
-							if (el.state == arr[idx - 1].state) {
-								splitters.push({
-									x: getPosition(el.timestamp, config.insidemin, config.max),
-									width: '1px'
-								})
-							}
-							if (idx < arr.length - 2) {
-								if (el.hasOwnProperty('end')) {
-									var diff = arr[idx + 1].timestamp - el.end
-									if (diff < 0) {
-										node.warn("overlapping the states is not supported!")
-									}
-									if (diff > 0) {
-										// gap
-										var xp = getPosition(el.end, config.insidemin, config.max)
-										var nxp = getPosition(arr[idx + 1].timestamp, config.insidemin, config.max)
-										var wp = nxp - xp
-										splitters.push({x: xp,width: wp + '%'})
-									}
-								}
-							}
-						}
-					}
-					storage.forEach(checkSpilt)
 				}
 
 				findDots = function () {
@@ -793,7 +749,6 @@ module.exports = function (RED) {
 					stops: generateGradient(),
 					ticks: generateTicks(),
 					legend: collectSummary(),
-					splits: splitters,
 					dots: dots
 				}
 
@@ -837,7 +792,6 @@ module.exports = function (RED) {
 							stops: generateGradient(),
 							ticks: generateTicks(),
 							legend: collectSummary(),
-							splits: splitters,
 							dots: dots,
 							label:config.label
 						}
@@ -925,7 +879,6 @@ module.exports = function (RED) {
 							updateGradient(data.stops)
 							updateTicks(data.ticks)
 							updateLegend(data.legend)
-							updateSplitters(data.splits)
 							updateDots(data.dots)
 							updateLabel(data.label)
 							updateBlankLabel()
@@ -955,28 +908,6 @@ module.exports = function (RED) {
 									el.style.paddingLeft = el.style.paddingRight = padding.hor
 									el.style.paddingTop = el.style.paddingBottom = padding.vert
 								}
-							}
-						}
-
-						var updateSplitters = function (splits) {
-							if (!splits) {
-								return
-							}
-							var g = document.getElementById("statra_splitters_" + $scope.unique);
-							if (!g) {
-								return
-							}
-							if (g.children.length > 0) {
-								while (g.firstChild) {
-									g.removeChild(g.firstChild);
-								}
-							}
-							var split
-							for (var i = 0; i < splits.length; i++) {
-								split = document.createElement('div')
-								split.className = 'splitter';
-								split.style.left = splits[i].x + '%'
-								document.getElementById("statra_splitters_" + $scope.unique).appendChild(split);
 							}
 						}
 
