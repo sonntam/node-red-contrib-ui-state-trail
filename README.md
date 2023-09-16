@@ -1,4 +1,4 @@
-# node-red-contrib-state-trail
+# node-red-contrib-ui-state-trail
 
 [![NPM version][npm-image]][npm-url]
 [![CodeFactor](https://www.codefactor.io/repository/github/hotnipi/node-red-contrib-ui-state-trail/badge)](https://www.codefactor.io/repository/github/hotnipi/node-red-contrib-ui-state-trail)
