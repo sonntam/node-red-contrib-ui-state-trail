@@ -18,6 +18,10 @@ Node-RED dashboard widget. Gantt type chart to visualize state changes over time
 ### Label
 To show label configure widget height to 2 units. 
   
+### End of Period is current time
+Set this check mark to have the end of the chart represent the current time (as of the last update via a msg). The period configured
+below is then also relative to current time.
+
 ### Period
 Time period. If configured to long period, keep input rate low. Too much data may harm performance significantly. [See also about the scaling time](#The-scaling-time)
 
@@ -47,12 +51,6 @@ To show the legend, the widget height must be configured to 2 units.
 Legend can be configured for 3 modes. It even shows information for all the configured states or for states currently in timeline or only for latest state       
 
 By clicking the legend on dashboard, you can toggle between names and summary. Summary shows aggregated time or percentage for each state.
-
-### Combine similar states
-By default, the node combines consecutive states if they have same value. You could turn this behavior off, if you wanted to present your data as it was provided. 
-Doing so, the consecutive similar states will be splitted with thin lines, and all those states will be individually clickable.
-If splitting the consecutive similar states is not intentional or if you don't use click option, it is recommended to keep this option selected. 
-For large amounts of data, combining the states helps to gain performance.
 
 ### Data Storage
 After a full re-deploy, Node-RED restart or system reboot, the node will lose it's saved chart data, unless the user has selected the 'Data Storage' option (checkbox) AND enabled a persistent form of context storage in the Node-RED settings.js file. In that case, the node will attempt to restore the data as it was prior to the re-deploy, restart or reboot.
