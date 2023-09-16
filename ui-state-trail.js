@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+const formatDuration = require('format-duration');
+
 
 /**
  * Performs binary search on a sorted array of numbers.
@@ -274,7 +276,6 @@ module.exports = function (RED) {
 			}
 			RED.nodes.createNode(this, config);
 			var done = null;
-			var range = null;
 			var site = null;
 			var getSiteProperties = null;
 			var getPosition = null;
@@ -466,56 +467,57 @@ module.exports = function (RED) {
 						idp = Math.trunc(id + saturate(0,r,1));
 
 						// Drop state if it does not change the view (i.e. state stays the same)
-						if( r > 0 && s.state === storage[idp].state ) return;
+						if( r <= 0 || s.state !== storage[idp].state ) 
+						{
+							// Insert element in the right position, overwriting element with same timestamp
+							r = saturate(0,r,2);
+							let idxi = Math.min(storage.length, Math.ceil(r+id));
+							let temp = [...storage];
+							temp.splice(idxi,r==0 ? 1 : 0,s);
 
-						// Insert element in the right position, overwriting element with same timestamp
-						r = saturate(0,r,2);
-						let idxi = Math.min(storage.length, Math.ceil(r+id));
-						let temp = [...storage];
-						temp.splice(idxi,r==0 ? 1 : 0,s);
+							//var temp = [...storage]
+							//temp = temp.filter(el => el.timestamp != s.timestamp)
+							//temp.push(s)
+							//temp = temp.sort((a, b) => a.timestamp - b.timestamp)
+							
+							// Get index of inserted element
+							//let idxi = temp.findIndex( x => x.timestamp == s.timestamp );
 
-						//var temp = [...storage]
-						//temp = temp.filter(el => el.timestamp != s.timestamp)
-						//temp.push(s)
-						//temp = temp.sort((a, b) => a.timestamp - b.timestamp)
-						
-						// Get index of inserted element
-						//let idxi = temp.findIndex( x => x.timestamp == s.timestamp );
+							// Drop state if it did not change. otherwise check following state if it can be dropped
+							if( idxi > 0 && temp[idxi-1].state === s.state) {
+								temp.splice(idxi,1);
+							}
+							else if( idxi < temp.length - 1 && temp[idxi+1].state == s.state ) {
+								temp.splice(idxi+1,1);
+							}
 
-						// Drop state if it did not change. otherwise check following state if it can be dropped
-						if( idxi > 0 && temp[idxi-1].state === s.state) {
-							temp.splice(idxi,1);
+							
+							let leastAcceptableTime = (config.useCurrentTimeRef ? currentTime : temp[temp.length - 1].timestamp) - config.period;
+							//temp = temp.filter(el => el.timestamp > time);
+							// Find first element that is within range of time domain
+							let idxs = temp.findIndex( el => el.timestamp > leastAcceptableTime);
+
+							// If feasible, set the element before that to start of domain to keep track of its value
+							if( idxs > 1 ) {
+								temp[idxs-1].timestamp = leastAcceptableTime;
+								temp[idxs-1].timeStr = new Date(leastAcceptableTime).toLocaleString("de-DE");
+							
+								// Throw everyting else away
+								temp = temp.slice(idxs-1);
+							}
+
+							storage = temp
 						}
-						else if( idxi < temp.length - 1 && temp[idxi+1].state == s.state ) {
-							temp.splice(idxi+1,1);
-						}
-
-						
-						let leastAcceptableTime = (config.useCurrentTimeRef ? currentTime : temp[temp.length - 1].timestamp) - config.period;
-						//temp = temp.filter(el => el.timestamp > time);
-						// Find first element that is within range of time domain
-						let idxs = temp.findIndex( el => el.timestamp > leastAcceptableTime);
-
-						// If feasible, set the element before that to start of domain to keep track of its value
-						if( idxs > 1 ) {
-							temp[idxs-1].timestamp = leastAcceptableTime;
-							temp[idxs-1].timeStr = new Date(leastAcceptableTime).toLocaleString("de-DE");
-						
-							// Throw everyting else away
-							temp = temp.slice(idxs-1);
-						}
-
-						storage = temp
 					} else {
 						storage.push(s);
 					}
 
-					config.min = storage[0].timestamp
+					config.min = (config.useCurrentTimeRef ? currentTime : storage.at(-1).timestamp ) - config.period;
 					config.insidemin = config.min
 					if (storage.length > 2) {
 						config.insidemin = storage[1].timestamp
 					}
-					config.max = storage[storage.length - 1].timestamp
+					config.max = config.useCurrentTimeRef ? currentTime : storage[storage.length - 1].timestamp;
 				}
 
 				addToRef = function(r){
@@ -569,56 +571,56 @@ module.exports = function (RED) {
 					if(storage.length == 0){
 						return ret
 					}
-					var sum = {}
-					var i
-					var total = 0
-					var z = 0
-					var p = 0					
-					var len = storage.length
-
-					for (i = 0; i < len -1; i++) {										
-						if(storage[i].end){
-							z = storage[i].end - storage[i].timestamp
-						}
-						else{
-							z = storage[i+1].timestamp - storage[i].timestamp
-						}
+					let i;
+					let stateDurations = {};
+					
+					// Calculate durations for all states in the current view
+					let len = storage.length
+					for (i = 0; i < len; i++) {										
+						let startTime = saturate(config.min, storage[i].timestamp, config.max);
+						let state = storage[i].state;
+						let stopTime; 
 						
-						if(!sum[storage[i].state]){
-							sum[storage[i].state] = 0
-						}					
-						sum[storage[i].state] += z						
+						// Handle last state depending on useCurrentTimeRef
+						if( i < len - 1 ) stopTime = storage[i+1].timestamp;
+						else stopTime = config.useCurrentTimeRef ? currentTime : startTime + config.extendLastStateValue;
+
+						if( !stateDurations.hasOwnProperty(state) ) stateDurations[state] = 0;
+
+						stateDurations[state] += stopTime - startTime;
 					}
-					total = storage[len - 1].timestamp - storage[0].timestamp
-					for (i = 0; i < config.states.length; i++) {
-						if(!sum[config.states[i].state]){
-							sum[config.states[i].state] = 0
+
+					let total = config.max - config.min;
+					for (i = 0; i < config.states.length; i++ ) {
+						let stateObj = config.states[i];
+						if(!stateDurations.hasOwnProperty(stateObj.state)) {
+							stateDurations[stateObj.state] = 0
 						}
-						p = (100 * sum[config.states[i].state] / total)
-						if (isNaN(p)) {
-							p = 0
+						let percentage = 100 * (stateDurations[stateObj.state] / total);
+						if (isNaN(percentage)) {
+							percentage = 0;
 						}
-						if (config.legend == 2 && p <= 0) {
-							continue
+						if (config.legend == 2 && percentage <= 0) {
+							continue;
 						}
 						if (config.legend == 3) {
 							if (len < 1) {
-								continue
+								continue;
 							}
-							if (config.states[i].state != storage[storage.length - 1].state) {
-								continue
+							if (stateObj.state !== storage.at(-1).state) {
+								continue;
 							}
 						}
-						p = p.toFixed(2) + "%"
-						var n = config.states[i].label == "" ? config.states[i].state.toString() : config.states[i].label
+						let strPercentage = percentage.toFixed(2) + "%"
+						let stateName = stateObj.label == "" ? stateObj.state.toString() : stateObj.label
 						ret.push({
-							name: n,
-							col: config.states[i].col,
-							val: formatTime(sum[config.states[i].state], true,'HH:mm:ss'),
-							per: p
+							name: stateName,
+							col: stateObj.col,
+							val: formatDuration(stateDurations[stateObj.state]),
+							per: strPercentage
 						})
 					}
-					return ret
+					return ret;
 				}
 
 				getSiteProperties = function () {					
@@ -639,35 +641,14 @@ module.exports = function (RED) {
 					}					
 					return opts
 				}
-				range = function (n, p, a, r) {
-					if (a == "clamp") {
-						if (n < p.minin) {
-							n = p.minin;
-						}
-						if (n > p.maxin) {
-							n = p.maxin;
-						}
-					}
-					if (a == "roll") {
-						var d = p.maxin - p.minin;
-						n = ((n - p.minin) % d + d) % d + p.minin;
-					}
-					var v = ((n - p.minin) / (p.maxin - p.minin) * (p.maxout - p.minout)) + p.minout;
-					if (r) {
-						v = Math.round(v);
-					}
-					return v
-				}
-
-
 
 				getColor = function (type) {
 					for (var i = 0; i < config.states.length; i++) {
 						if (config.states[i].state === type) {
-							return config.states[i].col
+							return config.states[i].col;
 						}
 					}
-					return 'black'
+					return 'black';
 				}
 
 				generateGradient = function () {
@@ -785,8 +766,8 @@ module.exports = function (RED) {
 					if (storage.length < 2) {
 						return ret
 					}
-					let endTime = (config.useCurrentTimeRef ? currentTime : storage.at(-1).timestamp + config.extendLastStateValue );
-					let startTime = endTime - config.period;
+					let endTime = config.max;
+					let startTime = config.min;
 
 					let interpPosition = (timestamp) => {
 						return interp1(timestamp, [startTime, endTime], [0, 100], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false);
@@ -805,20 +786,23 @@ module.exports = function (RED) {
 							o = {
 								x: po,
 								v: formatTime(t),
-								id: i
+								id: i,
+								align: 'c'
 							}
 							ret.push(o)
 						}	
 					} else {
-						var total = config.max - config.insidemin
+						var total = endTime - startTime;
+
 						var step = (total / (config.tickmarks - 1))	
 						for (let i = 0; i < config.tickmarks; i++) {
-							t = storage[1].timestamp + (step * i)						
-							po = getPosition(t, config.insidemin, config.max)							
+							t = startTime + (step * i)						
+							po = interpPosition(t);
 							o = {
 								x: po,
 								v: formatTime(t),
-								id: i								
+								id: i,
+								align: i == 0 ? 'l' : ( i == config.tickmarks-1 ? 'r' : 'c' )
 							}
 							ret.push(o)
 						}		
@@ -880,23 +864,13 @@ module.exports = function (RED) {
 				}
 
 				getPosition = function (target, min, max) {
-					var p = {
-						minin: min,
-						maxin: max,
-						minout: config.stripe.left,
-						maxout: config.stripe.right
-					}
-					return range(target, p, 'clamp', false)
+					return interp1( target, [min, max], [config.stripe.left, config.stripe.right], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false);
 				}
 
 				getTimeFromPos = function (pos, min, max) {
-					var p = {
-						minin: min,
-						maxin: max,
-						minout: config.insidemin,
-						maxout: config.max
-					}
-					return range(pos, p, 'clamp', true)
+					return Math.round(
+						interp1( pos, [min, max], [config.min, config.max], INTERP_TYPE_LINEAR, INTERP_EXTRAP_CLAMP, false )
+					);
 				}
 
 				getStateFromCoordinates = function (c) {

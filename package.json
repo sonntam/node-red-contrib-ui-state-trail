@@ -25,6 +25,8 @@
     "contributors": [
         "Marcus Sonntag (https://github.com/sonntam/)"
     ],
-
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "format-duration": "^3.0.2"
+    }
 }
