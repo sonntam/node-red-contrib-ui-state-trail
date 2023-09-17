@@ -653,7 +653,7 @@ module.exports = function (RED) {
 
 				generateGradient = function () {
 					var ret = []
-					if (storage.length < 2) {
+					if (storage.length < 1) {
 						return ret
 					}
 
